@@ -1,0 +1,91 @@
+import logging
+import os
+import pandas as pd
+from cryptography.fernet import Fernet
+
+# Set up logging for audit
+logging.basicConfig(filename='access.log', level=logging.INFO)
+
+
+# Function to generate encryption key and save to file
+def generate_key():
+    return Fernet.generate_key()
+
+
+def load_key(key_path):
+    with open(key_path, 'rb') as key_file:
+        return key_file.read()
+
+
+def save_key(key, key_path):
+    with open(key_path, 'wb') as key_file:
+        key_file.write(key)
+
+
+# Encrypt the dataset
+def encrypt_data(data, encryption_key):
+    fernet = Fernet(encryption_key)
+    return data.apply(lambda column: column.map(lambda x: fernet.encrypt(str(x).encode()).decode()))
+
+
+# Decrypt the dataset with access control
+def decrypt_data(encrypted_data, encryption_key, user):
+    if not has_access(user):
+        raise PermissionError("Access Denied. You do not have permission to decrypt this data.")
+    fernet = Fernet(encryption_key)
+    return encrypted_data.apply(lambda column: column.map(lambda x: fernet.decrypt(x.encode()).decode()))
+
+
+# Simulated access control
+def has_access(user):
+    return user in ["admin", "security_manager"]
+
+
+# Function to save in chunks
+def save_in_chunks(data, file_path, chunk_size=1000):
+    # Save in chunks for large data
+    with open(file_path, 'w', newline='') as file:
+        # Write the header first
+        data.iloc[:0].to_csv(file, index=False)
+
+        # Write data in chunks
+        for start in range(0, len(data), chunk_size):
+            data_chunk = data.iloc[start:start + chunk_size]
+            data_chunk.to_csv(file, header=False, index=False)
+
+
+# Main workflow to encrypt large company data
+def main():
+    key_path = 'encryption_key.key'
+
+    # Generate and save key if not exists
+    if not os.path.exists(key_path):
+        key = generate_key()
+        save_key(key, key_path)
+    else:
+        key = load_key(key_path)
+
+    # Load company data
+    data = pd.read_csv('VideoGame.csv')  # Ensure you have this file in your working directory
+    logging.info(f"Data loaded successfully at {pd.Timestamp.now()}")
+
+    # Encrypt the data
+    encrypted_data = encrypt_data(data, key)
+    logging.info(f"Data encrypted successfully at {pd.Timestamp.now()}")
+
+    # Save encrypted data in chunks
+    encrypted_data_path = 'encrypted_company_data.csv'
+    save_in_chunks(encrypted_data, encrypted_data_path, chunk_size=1000)
+
+    # Simulate a decryption request from a user
+    user = "admin"  # Change this to test access control
+    try:
+        decrypted_data = decrypt_data(encrypted_data, key, user)
+        logging.info(f"Data decrypted by {user} at {pd.Timestamp.now()}")
+        print(decrypted_data.head())
+    except PermissionError as e:
+        logging.error(f"Decryption attempt by {user} failed at {pd.Timestamp.now()}: {str(e)}")
+
+
+if __name__ == '__main__':
+    main()
